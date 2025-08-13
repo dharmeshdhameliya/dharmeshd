@@ -43,21 +43,39 @@ def process_data(df):
 
         if not stock_data.empty:
             try:
+                # If the given date is not in trading days, skip
+                if date not in stock_data.index:
+                    # Find the next trading day instead
+                    next_trading_day = stock_data.index[stock_data.index >= date].min()
+                    if pd.isna(next_trading_day):
+                        continue
+                    date = next_trading_day
+
                 # Get the closing price for the specified date
                 closing_price = stock_data.loc[date]['Close']
+                if isinstance(closing_price, pd.Series):
+                    closing_price = closing_price.iloc[0]
 
                 # Get the high price for the specified date
                 current_day_high = stock_data.loc[date]['High']
+                if isinstance(current_day_high, pd.Series):
+                    current_day_high = current_day_high.iloc[0]
 
                 # Find the previous trading day
                 previous_trading_day = stock_data.index[stock_data.index < date].max()
-                previous_close = stock_data.loc[previous_trading_day]['Close'] if previous_trading_day else None
+                if previous_trading_day is not None:
+                    prev_close_val = stock_data.loc[previous_trading_day]['Close']
+                    previous_close = prev_close_val.iloc[0] if isinstance(prev_close_val, pd.Series) else prev_close_val
+                else:
+                    previous_close = None
 
                 # Calculate the current day percentage change if the previous day's close exists
-                current_day_pct = ((closing_price - previous_close) / previous_close * 100) if previous_close else None
+                current_day_pct = ((closing_price - previous_close) / previous_close * 100) if previous_close is not None else None
 
                 # Get the current day volume
-                volume = stock_data.loc[date]['Volume'] if date in stock_data.index else None
+                volume = stock_data.loc[date]['Volume']
+                if isinstance(volume, pd.Series):
+                    volume = volume.iloc[0]
 
                 # Initialize results for the current row
                 row_result = {
@@ -74,6 +92,9 @@ def process_data(df):
 
                 for i, trading_day in enumerate(future_trading_days):
                     next_day_high = stock_data.loc[trading_day]['High']
+                    if isinstance(next_day_high, pd.Series):
+                        next_day_high = next_day_high.iloc[0]
+
                     result = 'Yes' if closing_price * 1.01 <= next_day_high else 'No'
                     all_results[f'trading_day_{i + 1}'][result] += 1
 
@@ -89,6 +110,7 @@ def process_data(df):
                 results.append(row_result)
 
             except KeyError:
+                # Handle missing data case
                 row_result = {
                     'symbol': symbol,
                     'date': date.strftime('%d-%m-%Y'),
@@ -112,7 +134,7 @@ def process_data(df):
     for i in range(60):
         trading_day_index = f'trading_day_{i + 1}'
         remaining_no -= all_results[trading_day_index]['Yes']
-        if remaining_no == 0:
+        if remaining_no <= 0:
             max_trading_day_yes = i + 1
             break
 
